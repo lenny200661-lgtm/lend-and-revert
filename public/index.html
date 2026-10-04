@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการคลังวัสดุและอุปกรณ์ห้องปฏิบัติการ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Prompt', sans-serif; background-color: #141414; color: #FFFFFF; }
+        .view { display: none; }
+        .view.active { display: block; }
+        .card-dark { background-color: #1E1E1E; border: 1px solid #2E2E2E; }
+        .card-subtle { background-color: #262626; border: 1px solid #383838; }
+        .btn-red { background-color: #E63946; color: white; border-radius: 6px; padding: 0.5rem 1rem; transition: all 0.2s; }
+        .btn-red:hover { background-color: #D62828; }
+        .badge-durable { background-color: rgba(59, 130, 246, 0.2); color: #93C5FD; border: 1px solid rgba(59, 130, 246, 0.4); }
+        .badge-consumable { background-color: rgba(239, 68, 68, 0.2); color: #FCA5A5; border: 1px solid rgba(239, 68, 68, 0.4); }
+        
+        #auth-container { display: flex; flex-direction: column; min-height: 100vh; justify-content: center; align-items: center; background-color: #141414; }
+        #app-container { display: none; min-height: 100vh; flex-direction: column; }
+    </style>
+</head>
+<body class="bg-[#141414] text-gray-100 min-h-screen">
+    
+    <!-- ========================================== -->
+    <!-- AUTH CONTAINER (Login & Register) -->
+    <!-- ========================================== -->
+    <div id="auth-container" class="p-4">
+        <!-- Brand Header -->
+        <div class="mb-6 text-center">
+            <div class="inline-flex items-center space-x-2 bg-[#1E1E1E] px-4 py-2 rounded-full border border-gray-700 mb-3 text-xs text-gray-300">
+                <span>⚡ คลังอุปกรณ์ห้องแล็บ IoT & Embedded Systems</span>
+            </div>
+            <h1 class="text-3xl font-bold text-white tracking-wide">ระบบจัดการคลังวัสดุและอุปกรณ์</h1>
+            <p class="text-sm text-gray-400 mt-1">ยืม–คืน ตรวจสอบสต็อก และติดตามการใช้งานโครงงาน</p>
+        </div>
+
+        <!-- Login Form Card -->
+        <div id="login-view" class="view active card-dark p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-800">
+            <h2 class="text-2xl font-bold mb-6 text-white text-center">เข้าสู่ระบบ</h2>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block mb-1 text-sm text-gray-300">รหัสนักศึกษา / รหัสบุคลากร</label>
+                    <input type="text" id="login-id" required placeholder="เช่น 66010001 หรือ admin01" 
+                           class="w-full p-3 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-500 transition">
+                </div>
+                <div>
+                    <label class="block mb-1 text-sm text-gray-300">รหัสผ่าน</label>
+                    <input type="password" id="login-password" required placeholder="••••••••" 
+                           class="w-full p-3 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-500 transition">
+                </div>
+                <button type="submit" class="btn-red w-full py-3 font-semibold text-lg shadow-lg">เข้าสู่ระบบ</button>
+            </form>
+            <div class="mt-6 pt-6 border-t border-gray-800 text-center text-sm text-gray-400">
+                ยังไม่มีบัญชีผู้ใช้งาน? 
+                <button onclick="showAuthView('register-view')" class="text-red-400 font-medium hover:underline ml-1">สมัครสมาชิกที่นี่</button>
+            </div>
+            <div class="mt-4 p-3 bg-[#262626] rounded-lg text-xs text-gray-400 border border-gray-700">
+                <span class="font-bold text-gray-300">บัญชีทดสอบในระบบ (รหัสผ่าน: password123):</span>
+                <div class="mt-1 flex flex-wrap gap-2">
+                    <span class="bg-gray-800 px-2 py-0.5 rounded">Admin: <code>admin01</code></span>
+                    <span class="bg-gray-800 px-2 py-0.5 rounded">อาจารย์: <code>prof01</code></span>
+                    <span class="bg-gray-800 px-2 py-0.5 rounded">นักศึกษา: <code>66010001</code></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Register Form Card -->
+        <div id="register-view" class="view card-dark p-8 rounded-xl shadow-2xl w-full max-w-lg border border-gray-800">
+            <h2 class="text-2xl font-bold mb-4 text-white text-center">สมัครสมาชิกใหม่</h2>
+            <form onsubmit="handleRegister(event)" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block mb-1 text-sm text-gray-300">รหัสนักศึกษา / รหัสบุคลากร *</label>
+                        <input type="text" id="reg-id" required placeholder="เช่น 66010099" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500">
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-sm text-gray-300">ชื่อ-นามสกุล *</label>
+                        <input type="text" id="reg-name" required placeholder="นายธนภัทร เจริญกิจ" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block mb-1 text-sm text-gray-300">รหัสผ่าน *</label>
+                        <input type="password" id="reg-password" required placeholder="อย่างน้อย 4 ตัวอักษร" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500">
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-sm text-gray-300">กำหนดสิทธิ์ (Role) *</label>
+                        <select id="reg-role" class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500">
+                            <option value="Student">นักศึกษา (Student)</option>
+                            <option value="Professor">อาจารย์ (Professor)</option>
+                            <option value="Admin">ผู้ดูแลระบบ (Admin)</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block mb-1 text-sm text-gray-300">คณะ *</label>
+                    <select id="reg-faculty" required
+                            class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500">
+                        <option value="" disabled selected>-- กรุณาเลือกคณะ --</option>
+                        <option value="คณะวิศวกรรมศาสตร์">คณะวิศวกรรมศาสตร์</option>
+                        <option value="คณะวิทยาศาสตร์">คณะวิทยาศาสตร์</option>
+                        <option value="คณะเทคโนโลยีสารสนเทศ">คณะเทคโนโลยีสารสนเทศ</option>
+                        <option value="คณะครุศาสตร์อุตสาหกรรมและเทคโนโลยี">คณะครุศาสตร์อุตสาหกรรมและเทคโนโลยี</option>
+                        <option value="คณะสถาปัตยกรรมศาสตร์และการออกแบบ">คณะสถาปัตยกรรมศาสตร์และการออกแบบ</option>
+                        <option value="คณะบริหารธุรกิจ">คณะบริหารธุรกิจ</option>
+                        <option value="คณะศิลปศาสตร์">คณะศิลปศาสตร์</option>
+                        <option value="หน่วยงานสนับสนุน / เจ้าหน้าที่">หน่วยงานสนับสนุน / เจ้าหน้าที่</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block mb-1 text-sm text-gray-300">เบอร์โทรศัพท์</label>
+                        <input type="tel" id="reg-phone" placeholder="08x-xxx-xxxx" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500">
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-sm text-gray-300">Email</label>
+                        <input type="email" id="reg-email" placeholder="student@university.ac.th" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500">
+                    </div>
+                </div>
+                <button type="submit" class="btn-red w-full py-3 font-semibold text-lg shadow-lg mt-2">ยืนยันการสมัครสมาชิก</button>
+            </form>
+            <div class="mt-4 pt-4 border-t border-gray-800 text-center text-sm text-gray-400">
+                มีบัญชีอยู่แล้ว? 
+                <button onclick="showAuthView('login-view')" class="text-red-400 font-medium hover:underline ml-1">กลับไปหน้าเข้าสู่ระบบ</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ========================================== -->
+    <!-- APP CONTAINER (Main Application) -->
+    <!-- ========================================== -->
+    <div id="app-container">
+        <!-- Top Navigation Bar -->
+        <header class="bg-[#1C1C1C] border-b border-gray-800 px-6 py-3.5 sticky top-0 z-40 shadow-xl">
+            <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-4">
+                <!-- Brand Title -->
+                <div class="flex items-center space-x-3">
+                    <span class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></span>
+                    <div>
+                        <h1 class="font-bold text-base md:text-lg text-white tracking-wide">คลังอุปกรณ์ห้องแล็บ IoT & Embedded Systems</h1>
+                        <p class="text-xs text-gray-400">ระบบจัดการคลัง ยืม–คืน และตรวจสอบสต็อก</p>
+                    </div>
+                </div>
+
+                <!-- Navigation Links -->
+                <nav class="flex items-center flex-wrap gap-2 text-sm">
+                    <button onclick="showAppView('equipment-view')" class="nav-btn px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition" id="nav-equipment">
+                        📦 รายการอุปกรณ์
+                    </button>
+                    <button onclick="showAppView('request-view')" class="nav-btn px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition relative" id="nav-request">
+                        📝 แบบฟอร์มยืม
+                        <span id="cart-badge" class="hidden absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">0</span>
+                    </button>
+                    <button onclick="showAppView('history-view')" class="nav-btn px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition" id="nav-history">
+                        📋 ประวัติการยืม
+                    </button>
+                    <button onclick="showAppView('projects-view')" class="nav-btn px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition" id="nav-projects">
+                        🔍 สรุปโครงงาน/กลุ่ม
+                    </button>
+
+                    <!-- Role-based Admin/Professor Menus -->
+                    <span id="admin-menu-group" class="hidden flex items-center space-x-2 border-l border-gray-700 pl-2">
+                        <button onclick="showAppView('dashboard-view')" class="nav-btn px-3 py-1.5 rounded-lg text-red-300 hover:text-white hover:bg-red-950/40 border border-red-900/50 transition" id="nav-dashboard">
+                            📊 Dashboard
+                        </button>
+                        <button onclick="showAppView('approvals-view')" class="nav-btn px-3 py-1.5 rounded-lg text-yellow-300 hover:text-white hover:bg-yellow-950/40 border border-yellow-900/50 transition relative" id="nav-approvals">
+                            ⏳ รออนุมัติ
+                            <span id="pending-badge" class="hidden bg-yellow-500 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1">0</span>
+                        </button>
+                        <button onclick="showAppView('manage-view')" class="nav-btn px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition" id="nav-manage">
+                            🛠️ จัดการสต็อก
+                        </button>
+                        <button onclick="showAppView('checkin-view')" class="nav-btn px-3 py-1.5 rounded-lg text-green-300 hover:text-white hover:bg-green-950/40 border border-green-900/50 transition" id="nav-checkin">
+                            📥 ตรวจรับคืน
+                        </button>
+                    </span>
+                </nav>
+
+                <!-- User Profile & Logout -->
+                <div class="flex items-center space-x-3 bg-[#242424] px-3.5 py-1.5 rounded-full border border-gray-700 text-xs">
+                    <div class="text-right">
+                        <div class="font-bold text-white" id="user-display-name">-</div>
+                        <div class="text-gray-400"><span id="user-display-id">-</span> • <span class="text-red-400 font-semibold" id="user-display-role">-</span></div>
+                    </div>
+                    <button onclick="handleLogout()" title="ออกจากระบบ" class="text-gray-400 hover:text-red-400 ml-2 text-base transition">
+                        🚪
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="max-w-7xl mx-auto w-full p-4 md:p-8 flex-1">
+            
+            <!-- ========================================== -->
+            <!-- VIEW 1: EQUIPMENT CATALOG (Page 1 in PDF) -->
+            <!-- ========================================== -->
+            <div id="equipment-view" class="app-view view active space-y-6">
+                <div class="border-b border-gray-800 pb-4 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <div>
+                        <div class="inline-flex items-center space-x-2 bg-[#252525] px-3 py-1 rounded-full text-xs text-gray-300 mb-2 border border-gray-700">
+                            <span>📡 คลังอุปกรณ์ห้องแล็บ IoT & Embedded Systems</span>
+                        </div>
+                        <h2 class="text-2xl md:text-3xl font-bold text-white">List of equipment and durable goods available for loan</h2>
+                        <p class="text-sm text-gray-400 mt-1">ค้นหาไมโครคอนโทรลเลอร์ เซนเซอร์ และเครื่องมือวัดในห้องแล็บ กดเลือกอุปกรณ์ใส่ตะกร้าเพื่อส่งคำขอยืมออนไลน์ให้อาจารย์</p>
+                    </div>
+                    <!-- Cart Trigger Button -->
+                    <button onclick="showAppView('request-view')" class="btn-red flex items-center space-x-2 whitespace-nowrap self-start md:self-auto shadow-lg">
+                        <span>🛒 รายการที่เลือกยืม</span>
+                        <span id="cart-counter-btn" class="bg-white text-red-600 font-bold text-xs px-2 py-0.5 rounded-full">0</span>
+                    </button>
+                </div>
+
+                <!-- Search and Filters Bar (Matching PDF) -->
+                <div class="card-dark p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div class="relative w-full md:w-1/2">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">🔍</span>
+                        <input type="text" id="eq-search-input" oninput="debounceFilterEquipment()" 
+                               placeholder="ค้นหาชื่ออุปกรณ์, รหัสอุปกรณ์, หรือตำแหน่งจัดเก็บ..." 
+                               class="w-full pl-10 pr-4 py-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500">
+                    </div>
+                    <div class="flex items-center flex-wrap gap-3 w-full md:w-auto">
+                        <div class="flex items-center space-x-1 bg-[#262626] p-1 rounded-lg border border-gray-700 text-xs">
+                            <button onclick="setEquipmentTypeFilter('ทั้งหมด')" class="eq-filter-btn px-3 py-1.5 rounded bg-red-600 text-white font-medium" data-type="ทั้งหมด">ทั้งหมด</button>
+                            <button onclick="setEquipmentTypeFilter('ครุภัณฑ์')" class="eq-filter-btn px-3 py-1.5 rounded text-gray-300 hover:text-white" data-type="ครุภัณฑ์">ครุภัณฑ์</button>
+                            <button onclick="setEquipmentTypeFilter('วัสดุสิ้นเปลือง')" class="eq-filter-btn px-3 py-1.5 rounded text-gray-300 hover:text-white" data-type="วัสดุสิ้นเปลือง">วัสดุสิ้นเปลือง</button>
+                        </div>
+                        <label class="flex items-center space-x-2 text-xs text-gray-300 cursor-pointer select-none bg-[#262626] px-3 py-2 rounded-lg border border-gray-700">
+                            <input type="checkbox" id="eq-instock-only" onchange="loadEquipment()" class="rounded border-gray-700 text-red-600 focus:ring-red-500">
+                            <span>แสดงเฉพาะที่มีของ</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Equipment Grid Cards -->
+                <div id="equipment-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                    <!-- Populated dynamically by app.js -->
+                </div>
+            </div>
+
+
+            <!-- ========================================== -->
+            <!-- VIEW 2: ADMIN & AUDITOR DASHBOARD (Page 2) -->
+            <!-- ========================================== -->
+            <div id="dashboard-view" class="app-view view space-y-6">
+                <div class="border-b border-gray-800 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <div class="inline-flex items-center space-x-2 bg-red-950/40 text-red-300 border border-red-800/60 px-3 py-1 rounded-full text-xs font-semibold mb-2">
+                            <span>● Auditor & Lab Management Console</span>
+                        </div>
+                        <h2 class="text-2xl md:text-3xl font-bold text-white">ภาพรวมคลังอุปกรณ์และสถานะการยืม (Real-time Overview)</h2>
+                        <p class="text-sm text-gray-400 mt-1">ตรวจสอบยอดสต็อกคงเหลือ, รายการที่กำลังถูกยืม, และสรุปอุปกรณ์ชำรุดรอจัดซื้อ</p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button onclick="loadDashboard()" class="card-subtle px-3.5 py-2 rounded-lg text-xs font-semibold text-gray-300 hover:text-white flex items-center space-x-1">
+                            <span>🔄 รีเฟรชข้อมูล</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4 KPI Overview Cards (Matching Page 2 PDF) -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Total Equipment -->
+                    <div class="card-dark p-5 rounded-xl border border-gray-800 relative overflow-hidden">
+                        <div class="text-xs text-gray-400 font-medium">อุปกรณ์ทั้งหมดในคลัง</div>
+                        <div class="flex items-baseline space-x-2 mt-2">
+                            <span class="text-3xl lg:text-4xl font-black text-white" id="stat-total">0</span>
+                            <span class="text-xs text-gray-400">ชิ้น</span>
+                        </div>
+                        <div class="mt-3 text-xs text-gray-500 flex justify-between border-t border-gray-800 pt-2">
+                            <span>ครุภัณฑ์: <strong class="text-gray-300" id="stat-durable-total">0</strong></span>
+                            <span>สิ้นเปลือง: <strong class="text-gray-300" id="stat-consumable-total">0</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Active Loans -->
+                    <div class="card-dark p-5 rounded-xl border-l-4 border-blue-500 relative overflow-hidden">
+                        <div class="text-xs text-blue-400 font-medium">กำลังถูกยืมใช้งาน</div>
+                        <div class="flex items-baseline space-x-2 mt-2">
+                            <span class="text-3xl lg:text-4xl font-black text-blue-400" id="stat-borrowed">0</span>
+                            <span class="text-xs text-gray-400">ชิ้น</span>
+                        </div>
+                        <div class="mt-3 text-xs flex justify-between border-t border-gray-800 pt-2">
+                            <span class="text-red-400 font-medium">เกินกำหนด: <strong id="stat-overdue-count">0</strong> รายการ</span>
+                            <span class="text-yellow-400 font-medium">รออนุมัติ: <strong id="stat-pending-count">0</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Available for loan -->
+                    <div class="card-dark p-5 rounded-xl border-l-4 border-green-500 relative overflow-hidden">
+                        <div class="text-xs text-green-400 font-medium">พร้อมให้เบิก-ยืมทันที</div>
+                        <div class="flex items-baseline space-x-2 mt-2">
+                            <span class="text-3xl lg:text-4xl font-black text-green-400" id="stat-ready">0</span>
+                            <span class="text-xs text-gray-400">ชิ้น</span>
+                        </div>
+                        <div class="mt-3 text-xs text-gray-400 border-t border-gray-800 pt-2">
+                            <span>สต็อกพร้อมจ่ายในตู้ A, B, C</span>
+                        </div>
+                    </div>
+
+                    <!-- Damaged / Replacement Needed -->
+                    <div class="card-dark p-5 rounded-xl border-l-4 border-red-500 relative overflow-hidden">
+                        <div class="text-xs text-red-400 font-medium">ชำรุด / เสีย / สูญหาย</div>
+                        <div class="flex items-baseline space-x-2 mt-2">
+                            <span class="text-3xl lg:text-4xl font-black text-red-500" id="stat-damaged">0</span>
+                            <span class="text-xs text-gray-400">ชิ้น</span>
+                        </div>
+                        <div class="mt-3 text-xs text-gray-400 border-t border-gray-800 pt-2 flex justify-between">
+                            <span>ชำรุด: <strong class="text-gray-300" id="stat-damaged-only">0</strong></span>
+                            <span>สูญหาย: <strong class="text-gray-300" id="stat-lost-only">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Loans Monitor Table (Page 2 PDF) -->
+                <div class="card-dark p-6 rounded-xl border border-gray-800 space-y-4">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">รายการอุปกรณ์ที่กำลังถูกยืม (Active Loans Monitor)</h3>
+                            <p class="text-xs text-gray-400">แสดงข้อมูลนักศึกษา อาจารย์ที่ปรึกษา และวันครบกำหนดส่งคืนแบบเรียลไทม์</p>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <input type="text" id="dash-search-input" oninput="filterActiveLoansTable()" 
+                                   placeholder="ค้นหาชื่อ นศ., รหัส, หรือวิชา..." 
+                                   class="px-3 py-1.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-xs text-white focus:outline-none focus:border-red-500">
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="text-xs text-gray-400 border-b border-gray-800 uppercase tracking-wider bg-[#181818]">
+                                <tr>
+                                    <th class="py-3 px-4">ผู้ยืม / รหัสนักศึกษา</th>
+                                    <th class="py-3 px-4">อุปกรณ์ที่ยืม</th>
+                                    <th class="py-3 px-4">โครงงาน / รายวิชา</th>
+                                    <th class="py-3 px-4">อาจารย์ที่ปรึกษา</th>
+                                    <th class="py-3 px-4">กำหนดส่งคืน</th>
+                                    <th class="py-3 px-4">สถานะ</th>
+                                    <th class="py-3 px-4 text-right">ดำเนินการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="active-loans-list" class="divide-y divide-gray-800/60">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Damaged Equipment Log (Page 2 PDF) -->
+                <div class="card-dark p-6 rounded-xl border border-gray-800 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-red-500 font-bold">⚠️</span>
+                            <h3 class="text-lg font-bold text-white">รายงานอุปกรณ์ชำรุด (DAMAGED EQUIPMENT LOG)</h3>
+                        </div>
+                        <span class="text-xs text-gray-400">บันทึกตรวจรับโดย: พี่ตั้ม (ผู้ดูแลแล็บ) & เจ้าหน้าที่</span>
+                    </div>
+
+                    <div id="damaged-equipment-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- ========================================== -->
+            <!-- VIEW 3: CHECK-IN & INSPECTION CONSOLE (Page 3) -->
+            <!-- ========================================== -->
+            <div id="checkin-view" class="app-view view space-y-6">
+                <div class="border-b border-gray-800 pb-4 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl md:text-3xl font-bold text-white">คอนโซลตรวจรับคืนอุปกรณ์ (CHECK-IN & INSPECTION CONSOLE)</h2>
+                        <p class="text-sm text-gray-400 mt-1">สำหรับพี่ตั้ม (ผู้ดูแลแล็บ): สแกนรหัสอุปกรณ์/Loan ID ตรวจเช็กสภาพการใช้งานจริง และบันทึกคืนสต็อก</p>
+                    </div>
+                    <span class="bg-emerald-950/40 text-emerald-300 border border-emerald-800/60 px-3 py-1 rounded text-xs font-mono font-bold">
+                        STAFF ONLY
+                    </span>
+                </div>
+
+                <div class="max-w-3xl mx-auto space-y-6">
+                    <!-- Scanner / ID Input -->
+                    <div class="card-dark p-6 rounded-xl border border-gray-800">
+                        <label class="block text-sm text-gray-300 mb-2 font-medium">สแกนบาร์โค้ด / ใส่รหัสคำขอยืม (Loan ID)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="checkin-id" placeholder="ใส่รหัส Loan ID เช่น 65f... หรือเลือกจากตารางด้านล่าง" 
+                                   class="flex-1 p-3 bg-[#2A2A2A] border border-gray-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-red-500">
+                            <button onclick="findLoanForCheckin()" class="btn-red px-5 font-semibold text-sm">
+                                🔍 ตรวจสอบ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Inspection Card (Hidden until loan is selected) -->
+                    <div id="checkin-inspection-card" class="card-dark p-6 rounded-xl border border-gray-800 space-y-6 hidden">
+                        <!-- Loan Details Header -->
+                        <div class="border-b border-gray-800 pb-4">
+                            <span class="text-xs text-blue-400 uppercase tracking-wider font-semibold">รายการที่ตรวจพบในระบบ</span>
+                            <h3 class="text-xl font-bold text-white mt-1" id="inspect-equipment-name">-</h3>
+                            <div class="text-sm text-gray-300 mt-2 flex flex-wrap gap-4">
+                                <span>ผู้ยืม: <strong class="text-white" id="inspect-student">-</strong></span>
+                                <span>โครงงาน/วิชา: <strong class="text-white" id="inspect-project">-</strong></span>
+                                <span>ตำแหน่งเก็บเดิม: <strong class="text-yellow-400" id="inspect-location">-</strong></span>
+                            </div>
+                        </div>
+
+                        <!-- Inspection Options (Matching Page 3 PDF) -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-200 mb-3">ผลการตรวจสภาพอุปกรณ์โดยพี่ตั้ม (INSPECTION RESULT) *</label>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Option 1: Normal -->
+                                <label class="card-subtle p-4 rounded-xl border-2 cursor-pointer transition flex items-start space-x-3 hover:border-emerald-500" id="label-cond-normal">
+                                    <input type="radio" name="inspect-condition" value="ปกติ" checked class="mt-1 text-emerald-500 focus:ring-emerald-500">
+                                    <div>
+                                        <div class="font-bold text-emerald-400 text-sm">● 1. สภาพปกติ / ใช้งานได้สมบูรณ์</div>
+                                        <p class="text-xs text-gray-400 mt-1">อุปกรณ์อยู่ในสภาพดี สายโพรบครบ ไม่มีรอยไหม้หรือเสียหาย ระบบจะนำกลับเข้าสต็อก <span class="text-emerald-400 font-mono">Available</span> ทันที</p>
+                                    </div>
+                                </label>
+
+                                <!-- Option 2: Damaged -->
+                                <label class="card-subtle p-4 rounded-xl border-2 cursor-pointer transition flex items-start space-x-3 hover:border-red-500" id="label-cond-damaged">
+                                    <input type="radio" name="inspect-condition" value="ชำรุด" class="mt-1 text-red-500 focus:ring-red-500">
+                                    <div>
+                                        <div class="font-bold text-red-400 text-sm">■ 2. ชำรุด / เสียหาย / อุปกรณ์ไม่สมบูรณ์</div>
+                                        <p class="text-xs text-gray-400 mt-1">พบความเสียหาย หรือชิ้นส่วนสูญหาย ระบบจะตัดยอดเข้า <span class="text-red-400 font-mono">Damaged</span> เพื่อรออาจารย์เบียร์พิจารณาซ่อม/จัดซื้อ</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Damage Details Note -->
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">บันทึกเพิ่มเติม / อาการชำรุด (ถ้ามี)</label>
+                            <input type="text" id="inspect-damage-note" placeholder="เช่น ชิปเรกูเลเตอร์ไหม้, เฟืองแตก, สายสัญญาณขาด..." 
+                                   class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                        </div>
+
+                        <!-- Action Submit -->
+                        <div class="pt-4 border-t border-gray-800 flex justify-between items-center">
+                            <span class="text-xs text-gray-500 font-mono">Status: Ready to update MongoDB</span>
+                            <button onclick="submitCheckinReturn()" class="btn-red px-6 py-2.5 font-bold flex items-center space-x-2">
+                                <span>บันทึกการตรวจรับคืนอุปกรณ์</span>
+                                <span>→</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Select Table for Active Loans -->
+                    <div class="card-dark p-5 rounded-xl border border-gray-800 space-y-3">
+                        <h4 class="font-bold text-sm text-gray-300">หรือเลือกรายการที่กำลังยืมอยู่เพื่อตรวจรับคืน:</h4>
+                        <div class="overflow-x-auto max-h-60 overflow-y-auto">
+                            <table class="w-full text-xs text-left">
+                                <thead class="text-gray-400 border-b border-gray-800 sticky top-0 bg-[#1E1E1E]">
+                                    <tr>
+                                        <th class="py-2 px-2">Loan ID</th>
+                                        <th class="py-2 px-2">ผู้ยืม</th>
+                                        <th class="py-2 px-2">อุปกรณ์</th>
+                                        <th class="py-2 px-2">กำหนดส่งคืน</th>
+                                        <th class="py-2 px-2 text-right">เลือก</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="checkin-quick-list" class="divide-y divide-gray-800">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- ========================================== -->
+            <!-- VIEW 4: LOAN REQUEST FORM (Page 4 in PDF) -->
+            <!-- ========================================== -->
+            <div id="request-view" class="app-view view space-y-6">
+                <div class="border-b border-gray-800 pb-4 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl md:text-3xl font-bold text-white">แบบฟอร์มส่งคำขอยืมอุปกรณ์ห้องปฏิบัติการ (LOAN REQUEST FORM)</h2>
+                        <p class="text-sm text-gray-400 mt-1">กรอกข้อมูลให้ครบถ้วนเพื่อส่งให้อาจารย์ที่ปรึกษาและพี่ตั้มตรวจสอบก่อนมารับของ</p>
+                    </div>
+                    <span class="text-xs font-mono text-gray-400 bg-gray-800 px-3 py-1 rounded border border-gray-700">
+                        STEP 1 OF 2
+                    </span>
+                </div>
+
+                <div class="card-dark p-6 md:p-8 rounded-xl border border-gray-800 max-w-4xl mx-auto space-y-6">
+                    <!-- Selected Items Box (Page 4 PDF) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="text-sm font-bold text-gray-200">อุปกรณ์ที่เลือกยืม (Selected Items)</label>
+                            <button onclick="showAppView('equipment-view')" class="text-xs text-red-400 hover:underline">
+                                + เพิ่มอุปกรณ์จากคลัง
+                            </button>
+                        </div>
+                        
+                        <div id="selected-items-container" class="space-y-3">
+                            <!-- Populated dynamically from cart state -->
+                        </div>
+                    </div>
+
+                    <!-- Loan Form -->
+                    <form id="loan-request-form" onsubmit="handleLoanSubmit(event)" class="space-y-5">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block mb-1 text-xs font-medium text-gray-300">รหัสนักศึกษาผู้ขอยืม *</label>
+                                <input type="text" id="req-studentid" readonly 
+                                       class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-gray-400 cursor-not-allowed">
+                            </div>
+                            <div>
+                                <label class="block mb-1 text-xs font-medium text-gray-300">ชื่อ-นามสกุล *</label>
+                                <input type="text" id="req-name" readonly 
+                                       class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-gray-400 cursor-not-allowed">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block mb-1 text-xs font-medium text-gray-300">กลุ่ม / สังกัด *</label>
+                                <input type="text" id="req-group" required placeholder="เช่น หุ่นยนต์ ปี 3 (กลุ่ม 4)" 
+                                       class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                            </div>
+                            <div>
+                                <label class="block mb-1 text-xs font-medium text-gray-300">สำหรับรายวิชา / กิจกรรมแล็บ *</label>
+                                <input type="text" id="req-subject" required placeholder="เช่น Robotic Control Lab, Senior Project" 
+                                       class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block mb-1 text-xs font-medium text-gray-300">อาจารย์ที่ปรึกษา / ผู้รับรอง *</label>
+                                <input type="text" id="req-advisor" required placeholder="เช่น อ.เบียร์ (ดร.เอกสิทธิ์)" 
+                                       class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                            </div>
+                            <div>
+                                <label class="block mb-1 text-xs font-medium text-gray-300">ชื่อโครงงาน *</label>
+                                <input type="text" id="req-project" required placeholder="เช่น Robot Arm Vision System" 
+                                       class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block mb-1 text-xs font-medium text-gray-300">วัตถุประสงค์การใช้งาน *</label>
+                            <textarea id="req-purpose" rows="2" required placeholder="เช่น ใช้ต่อวงจรและขับมอเตอร์โครงงานแขนกลตรวจจับวัตถุ สำหรับงานประกวดนวัตกรรม" 
+                                      class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500"></textarea>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block mb-1 text-xs font-medium text-gray-300">วันที่ต้องการมารับอุปกรณ์ที่แล็บ *</label>
+                                <input type="date" id="req-borrowdate" required onchange="updateDueDateLimits()"
+                                       class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                            </div>
+                            <div>
+                                <label class="block mb-1 text-xs font-medium text-gray-300">กำหนดส่งคืน (นักศึกษาเลือกเองได้ ไม่เกิน 14 วัน) *</label>
+                                <input type="date" id="req-duedate" required onchange="updateDueDateLimits()"
+                                       class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                                <p id="req-duedate-hint" class="text-[11px] text-gray-500 mt-1"></p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block mb-1 text-xs font-medium text-gray-300">หมายเหตุเพิ่มเติม</label>
+                            <textarea id="req-note" rows="2" maxlength="500" placeholder="เช่น ขอสายโพรบเพิ่ม 1 ชุด, จะมารับช่วงบ่าย, ฯลฯ (ไม่บังคับ)" 
+                                      class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500"></textarea>
+                        </div>
+
+                        <!-- Terms & Conditions Box (Matching Page 4 PDF) -->
+                        <div class="p-4 bg-red-950/20 border border-red-900/60 rounded-xl flex items-start space-x-3 text-xs text-red-200">
+                            <input type="checkbox" id="req-accept-terms" required class="mt-0.5 rounded text-red-600 focus:ring-red-500">
+                            <label for="req-accept-terms" class="cursor-pointer select-none">
+                                ข้าพเจ้ายินยอมปฏิบัติตามระเบียบห้องปฏิบัติการหุ่นยนต์ หากเกิดการชำรุดเสียหายอันเกิดจากการใช้งานผิดวิธี ข้าพเจ้ายินยอมให้บันทึกประวัติ และดำเนินการตามระเบียบของสาขาวิชา
+                            </label>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-gray-800">
+                            <span class="text-xs text-gray-500 font-mono">บันทึกลงคอลเลกชัน MongoDB: borrow_records</span>
+                            <div class="flex space-x-3 w-full sm:w-auto">
+                                <button type="button" onclick="showAppView('equipment-view')" class="card-subtle px-5 py-2.5 rounded-lg text-sm text-gray-300 hover:text-white">
+                                    ยกเลิก
+                                </button>
+                                <button type="submit" class="btn-red px-6 py-2.5 font-bold text-sm flex items-center space-x-2">
+                                    <span>ส่งคำขอยืมอุปกรณ์</span>
+                                    <span>→</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+
+            <!-- ========================================== -->
+            <!-- VIEW 5: LOAN HISTORY & STATUS (Page 5 in PDF) -->
+            <!-- ========================================== -->
+            <div id="history-view" class="app-view view space-y-6">
+                <div class="border-b border-gray-800 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-2xl md:text-3xl font-bold text-white">ประวัติและสถานะการยืม–คืนอุปกรณ์</h2>
+                        <p class="text-sm text-gray-400 mt-1">รหัสนักศึกษา: <span id="hist-student-id" class="text-white font-mono">-</span></p>
+                    </div>
+                    <!-- Tabs Matching Page 5 PDF -->
+                    <div class="flex space-x-1 bg-[#242424] p-1 rounded-lg border border-gray-700 text-xs">
+                        <button onclick="filterHistory('ทั้งหมด')" class="hist-tab-btn px-4 py-1.5 rounded bg-red-600 text-white font-medium" data-tab="ทั้งหมด">
+                            ทั้งหมด (<span id="hist-cnt-all">0</span>)
+                        </button>
+                        <button onclick="filterHistory('กำลังดำเนินการ')" class="hist-tab-btn px-4 py-1.5 rounded text-gray-300 hover:text-white" data-tab="กำลังดำเนินการ">
+                            รายการที่กำลังดำเนินการ (<span id="hist-cnt-active">0</span>)
+                        </button>
+                        <button onclick="filterHistory('คืนแล้ว')" class="hist-tab-btn px-4 py-1.5 rounded text-gray-300 hover:text-white" data-tab="คืนแล้ว">
+                            คืนแล้ว (<span id="hist-cnt-returned">0</span>)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- History Cards Container (Page 5 Design) -->
+                <div id="history-list-cards" class="space-y-4 max-w-4xl mx-auto">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+
+            <!-- ========================================== -->
+            <!-- VIEW 6: PENDING APPROVALS (For Admin/Professors) -->
+            <!-- ========================================== -->
+            <div id="approvals-view" class="app-view view space-y-6">
+                <div class="border-b border-gray-800 pb-4 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl md:text-3xl font-bold text-white">คำขอยืมอุปกรณ์ที่รออนุมัติ (Pending Approvals)</h2>
+                        <p class="text-sm text-gray-400 mt-1">อาจารย์และแอดมินสามารถตรวจสอบรายละเอียด ตรวจเช็กสต็อก และกดอนุมัติหรือปฏิเสธคำขอยืม</p>
+                    </div>
+                    <button onclick="loadApprovals()" class="card-subtle px-3.5 py-2 rounded-lg text-xs font-semibold text-gray-300 hover:text-white">
+                        🔄 รีเฟรช
+                    </button>
+                </div>
+
+                <div id="approvals-list" class="space-y-4 max-w-5xl mx-auto">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+
+            <!-- ========================================== -->
+            <!-- VIEW 7: PROJECT & GROUP OVERVIEW (For Professors) -->
+            <!-- ========================================== -->
+            <div id="projects-view" class="app-view view space-y-6">
+                <div class="border-b border-gray-800 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-2xl md:text-3xl font-bold text-white">ภาพรวมของแต่ละกลุ่มและโครงงาน (Project & Group Overview)</h2>
+                        <p class="text-sm text-gray-400 mt-1">อาจารย์และแอดมินสามารถตรวจสอบภาพรวมว่ากลุ่มไหนทำโปรเจกต์อะไร ยืมอุปกรณ์อะไรไปบ้าง และสถานะกำหนดส่งคืน</p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <input type="text" id="project-filter-advisor" oninput="loadProjectsSummary()" 
+                               placeholder="กรองตามชื่ออาจารย์ที่ปรึกษา..." 
+                               class="px-3 py-1.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-xs text-white">
+                    </div>
+                </div>
+
+                <div id="projects-summary-grid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+
+            <!-- ========================================== -->
+            <!-- VIEW 8: EQUIPMENT & STOCK MANAGEMENT (Admin CRUD) -->
+            <!-- ========================================== -->
+            <div id="manage-view" class="app-view view space-y-6">
+                <div class="border-b border-gray-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-2xl md:text-3xl font-bold text-white">ระบบจัดการอุปกรณ์และสต็อก (Equipment & Stock Management)</h2>
+                        <p class="text-sm text-gray-400 mt-1">เพิ่ม แก้ไข ลบข้อมูลอุปกรณ์ ติดตามจำนวน พร้อมใช้งาน / ถูกยืม / เสีย / ชำรุด / สูญหาย</p>
+                    </div>
+                    <button onclick="openEquipmentModal()" class="btn-red flex items-center space-x-2 text-sm font-semibold">
+                        <span>+ เพิ่มอุปกรณ์ใหม่</span>
+                    </button>
+                </div>
+
+                <!-- Equipment Management Table -->
+                <div class="card-dark p-6 rounded-xl border border-gray-800 space-y-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="text-xs text-gray-400 border-b border-gray-800 uppercase tracking-wider bg-[#181818]">
+                                <tr>
+                                    <th class="py-3 px-3">รหัสอุปกรณ์</th>
+                                    <th class="py-3 px-3">ชื่ออุปกรณ์</th>
+                                    <th class="py-3 px-3">หมวดหมู่</th>
+                                    <th class="py-3 px-3 text-center">ทั้งหมด</th>
+                                    <th class="py-3 px-3 text-center text-green-400">พร้อมใช้</th>
+                                    <th class="py-3 px-3 text-center text-blue-400">ถูกยืม</th>
+                                    <th class="py-3 px-3 text-center text-red-400">ชำรุด/เสีย</th>
+                                    <th class="py-3 px-3">ตำแหน่งเก็บ</th>
+                                    <th class="py-3 px-3">สถานะ</th>
+                                    <th class="py-3 px-3 text-right">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="manage-equipment-table" class="divide-y divide-gray-800 text-xs">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+
+    <!-- ========================================== -->
+    <!-- MODAL: ADD / EDIT EQUIPMENT (Admin) -->
+    <!-- ========================================== -->
+    <div id="equipment-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 hidden">
+        <div class="card-dark w-full max-w-2xl p-6 md:p-8 rounded-2xl border border-gray-700 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-gray-800 pb-3">
+                <h3 class="text-xl font-bold text-white" id="modal-eq-title">เพิ่มอุปกรณ์ใหม่</h3>
+                <button onclick="closeEquipmentModal()" class="text-gray-400 hover:text-white text-xl">✕</button>
+            </div>
+
+            <form onsubmit="handleEquipmentFormSubmit(event)" class="space-y-4">
+                <input type="hidden" id="modal-eq-id">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-1">รหัสอุปกรณ์ (Equipment ID) *</label>
+                        <input type="text" id="modal-eq-code" required placeholder="เช่น EQ-ESP-042 หรือ EQ-OSC-012" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-1">ชื่ออุปกรณ์ *</label>
+                        <input type="text" id="modal-eq-name" required placeholder="เช่น ESP32 DevKit V1 (Type-C)" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-1">ประเภทอุปกรณ์ *</label>
+                        <select id="modal-eq-type" class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                            <option value="ครุภัณฑ์">ครุภัณฑ์ (Durable Goods)</option>
+                            <option value="วัสดุสิ้นเปลือง">วัสดุสิ้นเปลือง (Consumables)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-1">ตำแหน่งจัดเก็บ (Location)</label>
+                        <input type="text" id="modal-eq-location" placeholder="เช่น Cabinet A, Shelf 2 หรือ ตู้ B ชั้น 1" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-1">จำนวนทั้งหมด *</label>
+                        <input type="number" id="modal-eq-total" required min="0" value="1" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-1">พร้อมใช้งาน</label>
+                        <input type="number" id="modal-eq-remaining" min="0" value="1" 
+                               class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-1">สถานะ</label>
+                        <select id="modal-eq-status" class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                            <option value="พร้อมใช้งาน">พร้อมใช้งาน</option>
+                            <option value="ถูกยืม">ถูกยืม</option>
+                            <option value="เสีย">เสีย</option>
+                            <option value="ชำรุด">ชำรุด</option>
+                            <option value="สูญหาย">สูญหาย</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-300 mb-1">URL รูปภาพอุปกรณ์</label>
+                    <input type="url" id="modal-eq-image" placeholder="https://..." 
+                           class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-300 mb-1">รายละเอียดอุปกรณ์</label>
+                    <textarea id="modal-eq-desc" rows="2" placeholder="สเปกอุปกรณ์ รายละเอียดเพิ่มเติม..." 
+                              class="w-full p-2.5 bg-[#2A2A2A] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-red-500"></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-4 border-t border-gray-800">
+                    <button type="button" onclick="closeEquipmentModal()" class="card-subtle px-4 py-2 rounded-lg text-sm text-gray-300 hover:text-white">
+                        ยกเลิก
+                    </button>
+                    <button type="submit" class="btn-red px-6 py-2 font-bold text-sm">
+                        บันทึกข้อมูล
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- App Logic Script -->
+    <script src="/app.js"></script>
+</body>
+</html>
