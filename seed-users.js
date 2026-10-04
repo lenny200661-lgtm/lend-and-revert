@@ -28,7 +28,8 @@ const seedDatabase = async () => {
                 role: 'Admin',
                 faculty: 'หน่วยงานสนับสนุน / เจ้าหน้าที่',
                 phone: '081-234-5678',
-                email: 'staff.tum@university.ac.th'
+                email: 'staff.tum@university.ac.th',
+                status: 'อนุมัติแล้ว'
             },
             {
                 studentId: 'prof01',

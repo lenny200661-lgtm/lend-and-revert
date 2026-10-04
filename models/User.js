@@ -8,7 +8,14 @@ const userSchema = new mongoose.Schema({
   faculty: { type: String, default: '' }, // คณะ (เลือกจากรายการ)
   department: { type: String, default: '' }, // (เดิม) สาขา/สังกัด — เก็บไว้เพื่อรองรับข้อมูลเก่า
   phone: { type: String, default: '' }, // เบอร์โทร
-  email: { type: String, default: '' } // Email
+  email: { type: String, default: '' }, // Email
+  status: { 
+    type: String, 
+    enum: ['อนุมัติแล้ว', 'รออนุมัติ', 'ปฏิเสธ'], 
+    default: 'อนุมัติแล้ว' 
+  },
+  approvedBy: { type: String, default: '' },
+  approvedAt: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

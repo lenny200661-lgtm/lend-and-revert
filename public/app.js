@@ -97,6 +97,16 @@ async function handleLogin(e) {
     }
 }
 
+function handleRoleChange(role) {
+    const notice = document.getElementById('admin-role-notice');
+    if (!notice) return;
+    if (role === 'Admin') {
+        notice.classList.remove('hidden');
+    } else {
+        notice.classList.add('hidden');
+    }
+}
+
 async function handleRegister(e) {
     e.preventDefault();
     const studentId = document.getElementById('reg-id').value.trim();
@@ -110,12 +120,19 @@ async function handleRegister(e) {
     if (!faculty) return alert('กรุณาเลือกคณะ');
 
     try {
-        await api('/auth/register', {
+        const res = await api('/auth/register', {
             method: 'POST',
             body: JSON.stringify({ studentId, name, password, role, faculty, phone, email })
         });
-        alert('สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบด้วยรหัสที่ลงทะเบียน');
+
+        if (res && res.pendingApproval) {
+            alert('🛡️ ส่งคำขอสร้างบัญชีผู้ดูแลระบบ (Admin) สำเร็จ!\n\nเนื่องจากการสร้างบัญชี Admin ต้องได้รับการตรวจสอบ ระบบได้ส่งคำขอไปยัง Admin คนอื่นแล้ว กรุณารอให้ Admin คนอื่นกดยอมรับคำขอก่อน จึงจะสามารถเข้าสู่ระบบได้');
+        } else {
+            alert('สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบด้วยรหัสที่ลงทะเบียน');
+        }
         e.target.reset();
+        const notice = document.getElementById('admin-role-notice');
+        if (notice) notice.classList.add('hidden');
         showAuthView('login-view');
     } catch (err) {
         alert(err.message);
@@ -163,7 +180,18 @@ function showAppView(viewId) {
     if (viewId === 'dashboard-view') loadDashboard();
     if (viewId === 'history-view') loadHistory();
     if (viewId === 'checkin-view') loadCheckinConsole();
-    if (viewId === 'approvals-view') loadApprovals();
+    if (viewId === 'approvals-view') {
+        const adminTabBtn = document.getElementById('tab-approval-admins');
+        if (adminTabBtn) {
+            if (currentUser && currentUser.role === 'Admin') {
+                adminTabBtn.classList.remove('hidden');
+            } else {
+                adminTabBtn.classList.add('hidden');
+                switchApprovalTab('loans');
+            }
+        }
+        refreshApprovalsView();
+    }
     if (viewId === 'projects-view') loadProjectsSummary();
     if (viewId === 'manage-view') loadManageEquipment();
 }
@@ -173,12 +201,30 @@ async function updatePendingBadges() {
     try {
         const stats = await api('/stats');
         const badge = document.getElementById('pending-badge');
+        const pendingLoans = stats.pendingLoans || 0;
+        const pendingAdmins = (currentUser.role === 'Admin' ? (stats.pendingAdmins || 0) : 0);
+        const totalPending = pendingLoans + pendingAdmins;
+
         if (badge) {
-            if (stats.pendingLoans > 0) {
-                badge.innerText = stats.pendingLoans;
+            if (totalPending > 0) {
+                badge.innerText = totalPending;
                 badge.classList.remove('hidden');
             } else {
                 badge.classList.add('hidden');
+            }
+        }
+
+        const tabLoansCount = document.getElementById('tab-loans-count');
+        if (tabLoansCount) tabLoansCount.innerText = pendingLoans;
+
+        const tabAdminsCount = document.getElementById('tab-admins-count');
+        if (tabAdminsCount) {
+            const adminCount = stats.pendingAdmins || 0;
+            tabAdminsCount.innerText = adminCount;
+            if (adminCount > 0) {
+                tabAdminsCount.classList.remove('hidden');
+            } else {
+                tabAdminsCount.classList.add('hidden');
             }
         }
     } catch (_) {}
@@ -1013,6 +1059,158 @@ async function rejectLoan(loanId) {
         });
         alert('ปฏิเสธคำขอยืมเรียบร้อยแล้ว');
         loadApprovals();
+        updatePendingBadges();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+// ==========================================
+// 7.1 ADMIN REGISTRATION REQUEST APPROVALS
+// ==========================================
+
+let currentApprovalTab = 'loans';
+
+function switchApprovalTab(tab) {
+    currentApprovalTab = tab;
+    const loanTabBtn = document.getElementById('tab-approval-loans');
+    const adminTabBtn = document.getElementById('tab-approval-admins');
+    const loanSection = document.getElementById('approvals-loans-section');
+    const adminSection = document.getElementById('approvals-admins-section');
+
+    if (!loanTabBtn || !adminTabBtn) return;
+
+    if (tab === 'loans') {
+        loanTabBtn.className = 'px-4 py-2 rounded-lg text-sm font-bold bg-yellow-500 text-black transition flex items-center space-x-2 shadow-sm';
+        adminTabBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition flex items-center space-x-2';
+        loanSection?.classList.remove('hidden');
+        adminSection?.classList.add('hidden');
+        loadApprovals();
+    } else {
+        loanTabBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition flex items-center space-x-2';
+        adminTabBtn.className = 'px-4 py-2 rounded-lg text-sm font-bold bg-red-600 text-white transition flex items-center space-x-2 shadow-sm';
+        loanSection?.classList.add('hidden');
+        adminSection?.classList.remove('hidden');
+        loadAdminRequests();
+    }
+}
+
+function refreshApprovalsView() {
+    loadApprovals();
+    if (currentUser && currentUser.role === 'Admin') {
+        loadAdminRequests();
+    }
+    updatePendingBadges();
+}
+
+async function loadAdminRequests() {
+    const container = document.getElementById('admin-requests-list');
+    if (!container) return;
+
+    if (!currentUser || currentUser.role !== 'Admin') {
+        container.innerHTML = '<div class="py-8 text-center text-gray-500">เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถตรวจสอบคำขอนี้ได้</div>';
+        return;
+    }
+
+    try {
+        container.innerHTML = '<div class="py-12 text-center text-gray-400">กำลังโหลดคำขอสร้างบัญชี Admin...</div>';
+        const requests = await api('/admin-requests');
+        container.innerHTML = '';
+
+        const badgeCount = document.getElementById('tab-admins-count');
+        if (badgeCount) {
+            badgeCount.innerText = requests.length;
+            if (requests.length > 0) badgeCount.classList.remove('hidden');
+            else badgeCount.classList.add('hidden');
+        }
+
+        if (requests.length === 0) {
+            container.innerHTML = `
+                <div class="card-dark p-8 rounded-xl text-center text-gray-500 border border-gray-800">
+                    <div class="text-3xl mb-2">🛡️</div>
+                    <p class="text-base font-bold text-gray-300">ไม่มีคำขอสร้างบัญชี Admin ที่รอการอนุมัติในขณะนี้</p>
+                    <p class="text-xs text-gray-500 mt-1">เมื่อมีผู้ใช้งานใหม่ลงทะเบียนด้วยสิทธิ์ Admin รายการคำขอจะปรากฏที่นี่เพื่อให้คุณกดยอมรับ</p>
+                </div>
+            `;
+            return;
+        }
+
+        requests.forEach(req => {
+            const el = document.createElement('div');
+            el.className = 'card-dark p-6 rounded-xl border border-red-900/40 space-y-4 shadow-xl';
+
+            const reqDate = req.createdAt ? new Date(req.createdAt).toLocaleString('th-TH') : '-';
+
+            el.innerHTML = `
+                <div class="flex flex-wrap justify-between items-start gap-2 border-b border-gray-800 pb-3">
+                    <div>
+                        <span class="bg-red-950/80 text-red-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-red-800">
+                            🛡️ คำขอสร้างบัญชีผู้ดูแลระบบ (Admin Request)
+                        </span>
+                        <h4 class="font-bold text-lg text-white mt-1">${esc(req.name)}</h4>
+                        <div class="text-xs text-gray-400">รหัสผู้ใช้งาน: <strong class="text-white font-mono">${esc(req.studentId)}</strong> • สิทธิ์ที่ขอ: <span class="text-red-400 font-bold">Admin</span></div>
+                    </div>
+                    <div class="text-xs text-right text-gray-400">
+                        <div>ยื่นคำขอเมื่อ: <span class="text-gray-300">${reqDate}</span></div>
+                        <div class="text-yellow-400 font-medium">สถานะ: รอ Admin อนุมัติ</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 bg-[#242424] p-3 rounded-lg border border-gray-800 text-xs">
+                    <div>
+                        <span class="text-gray-400 font-semibold">คณะ / สังกัด:</span>
+                        <div class="text-white font-medium mt-0.5">${esc(req.faculty || '-')}</div>
+                    </div>
+                    <div>
+                        <span class="text-gray-400 font-semibold">อีเมล:</span>
+                        <div class="text-white font-medium mt-0.5">${esc(req.email || '-')}</div>
+                    </div>
+                    <div>
+                        <span class="text-gray-400 font-semibold">เบอร์โทรศัพท์:</span>
+                        <div class="text-white font-medium mt-0.5">${esc(req.phone || '-')}</div>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-gray-800 flex justify-end space-x-3">
+                    <button onclick="rejectAdminRequest('${req._id}', '${esc(req.name)}')" class="card-subtle px-4 py-2 rounded-lg text-xs font-semibold text-gray-300 hover:text-red-400 border border-gray-700">
+                        ✕ ปฏิเสธคำขอ
+                    </button>
+                    <button onclick="approveAdminRequest('${req._id}', '${esc(req.name)}')" class="bg-green-600 hover:bg-green-500 text-white px-5 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-lg">
+                        <span>✓ กดยอมรับคำขอ (อนุมัติสิทธิ์ Admin)</span>
+                    </button>
+                </div>
+            `;
+            container.appendChild(el);
+        });
+    } catch (err) {
+        container.innerHTML = `<div class="py-12 text-center text-red-400">${esc(err.message)}</div>`;
+    }
+}
+
+async function approveAdminRequest(userId, userName) {
+    if (!confirm(`ยืนยันการกดยอมรับคำขอสร้างบัญชี Admin สำหรับ "${userName}" หรือไม่?\\n\\nเมื่อกดยอมรับแล้ว ผู้ใช้นี้จะสามารถเข้าสู่ระบบและได้รับสิทธิ์ผู้ดูแลระบบทันที`)) return;
+    try {
+        const res = await api(`/admin-requests/${userId}/approve`, {
+            method: 'PUT',
+            body: JSON.stringify({ approverName: currentUser.name, approverId: currentUser.studentId })
+        });
+        alert(res.message || 'กดยอมรับคำขอสร้างบัญชี Admin สำเร็จ');
+        loadAdminRequests();
+        updatePendingBadges();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+async function rejectAdminRequest(userId, userName) {
+    if (!confirm(`ยืนยันการปฏิเสธคำขอสร้างบัญชี Admin สำหรับ "${userName}" หรือไม่?`)) return;
+    try {
+        const res = await api(`/admin-requests/${userId}/reject`, {
+            method: 'PUT',
+            body: JSON.stringify({ rejectedBy: currentUser.name })
+        });
+        alert(res.message || 'ปฏิเสธคำขอเรียบร้อยแล้ว');
+        loadAdminRequests();
         updatePendingBadges();
     } catch (err) {
         alert(err.message);

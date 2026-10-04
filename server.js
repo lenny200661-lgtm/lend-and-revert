@@ -64,23 +64,55 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'กรุณากรอกรหัสนักศึกษา/บุคลากร, ชื่อ-นามสกุล, คณะ และรหัสผ่าน' });
     }
 
-    const existing = await User.findOne({ studentId });
-    if (existing) return res.status(400).json({ error: 'มีผู้ใช้งานรหัสนี้ในระบบแล้ว' });
+    const trimmedId = studentId.trim();
+    const existing = await User.findOne({ studentId: trimmedId });
+    if (existing) {
+      if (existing.status === 'รออนุมัติ') {
+        return res.status(400).json({ error: 'รหัสผู้ใช้งานนี้ได้ส่งคำขอสร้างบัญชีแล้ว อยู่ระหว่างรอ Admin ท่านอื่นกดยอมรับคำขอ' });
+      }
+      return res.status(400).json({ error: 'มีผู้ใช้งานรหัสนี้ในระบบแล้ว' });
+    }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    let userStatus = 'อนุมัติแล้ว';
+    let requiresApproval = false;
+
+    if (role === 'Admin') {
+      // Check if there is an existing active Admin in the database
+      const existingAdmin = await User.findOne({
+        role: 'Admin',
+        status: { $ne: 'รออนุมัติ' }
+      });
+
+      // If an active Admin already exists, new Admin registration MUST be approved by another Admin
+      if (existingAdmin) {
+        userStatus = 'รออนุมัติ';
+        requiresApproval = true;
+      }
+    }
+
     const newUser = new User({
-      studentId: studentId.trim(),
+      studentId: trimmedId,
       password: hashedPassword,
       name: name.trim(),
       role: role || 'Student',
       faculty: String(faculty).trim(),
       phone: (phone || '').trim(),
-      email: (email || '').trim()
+      email: (email || '').trim(),
+      status: userStatus
     });
     
     await newUser.save();
+
+    if (requiresApproval) {
+      return res.json({ 
+        message: 'ส่งคำขอสร้างบัญชีผู้ดูแลระบบ (Admin) สำเร็จ! ระบบได้ส่งคำขอไปยัง Admin คนอื่นแล้ว กรุณารอให้ Admin กดยอมรับคำขอก่อนจึงจะเข้าสู่ระบบได้', 
+        pendingApproval: true 
+      });
+    }
+
     res.json({ message: 'สมัครสมาชิกสำเร็จ', user: { studentId: newUser.studentId, name: newUser.name, role: newUser.role, faculty: newUser.faculty } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -98,6 +130,18 @@ app.post('/api/auth/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: 'รหัสผ่านไม่ถูกต้อง' });
 
+    if (user.status === 'รออนุมัติ') {
+      return res.status(403).json({ 
+        error: 'บัญชีผู้ดูแลระบบ (Admin) นี้อยู่ระหว่างรอการกดยอมรับคำขอจาก Admin ท่านอื่น กรุณารอการอนุมัติก่อนเข้าสู่ระบบ' 
+      });
+    }
+
+    if (user.status === 'ปฏิเสธ') {
+      return res.status(403).json({ 
+        error: 'คำขอสร้างบัญชีผู้ดูแลระบบนี้ไม่ได้รับการอนุมัติจาก Admin' 
+      });
+    }
+
     res.json({ 
       message: 'เข้าสู่ระบบสำเร็จ', 
       user: { 
@@ -107,7 +151,8 @@ app.post('/api/auth/login', async (req, res) => {
         role: user.role,
         faculty: user.faculty,
         phone: user.phone,
-        email: user.email
+        email: user.email,
+        status: user.status
       } 
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -131,6 +176,64 @@ app.put('/api/users/:id', async (req, res) => {
       { new: true }
     ).select('-password');
     res.json(user);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get pending Admin registration requests (Admin only)
+app.get('/api/admin-requests', async (req, res) => {
+  try {
+    const requests = await User.find({ role: 'Admin', status: 'รออนุมัติ' })
+      .select('-password')
+      .sort({ createdAt: -1 });
+    res.json(requests);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Approve Admin registration request (Existing Admin accepts request)
+app.put('/api/admin-requests/:id/approve', async (req, res) => {
+  try {
+    const { approverName, approverId } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'ไม่พบบัญชีผู้ใช้งานนี้' });
+    if (user.role !== 'Admin') return res.status(400).json({ error: 'บัญชีนี้ไม่ใช่สิทธิ์ Admin' });
+    if (user.status !== 'รออนุมัติ') {
+      return res.status(400).json({ error: 'คำขอนี้ไม่ได้อยู่ในสถานะรออนุมัติ' });
+    }
+
+    if (approverId && user.studentId === approverId) {
+      return res.status(400).json({ error: 'ไม่สามารถกดยอมรับคำขอของตนเองได้ ต้องให้ Admin คนอื่นเป็นผู้กดยอมรับ' });
+    }
+
+    user.status = 'อนุมัติแล้ว';
+    user.approvedBy = approverName || 'Admin';
+    user.approvedAt = new Date();
+    await user.save();
+
+    res.json({ 
+      message: `กดยอมรับคำขอสร้างบัญชี Admin สำหรับ "${user.name}" สำเร็จ`,
+      user: {
+        id: user._id,
+        studentId: user.studentId,
+        name: user.name,
+        role: user.role,
+        status: user.status
+      }
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reject Admin registration request (Existing Admin rejects request)
+app.put('/api/admin-requests/:id/reject', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'ไม่พบบัญชีผู้ใช้งานนี้' });
+    if (user.status !== 'รออนุมัติ') {
+      return res.status(400).json({ error: 'คำขอนี้ไม่ได้อยู่ในสถานะรออนุมัติ' });
+    }
+
+    const targetName = user.name;
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ message: `ปฏิเสธคำขอสร้างบัญชี Admin สำหรับ "${targetName}" เรียบร้อยแล้ว` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -486,6 +589,7 @@ app.get('/api/stats', async (req, res) => {
 
     // Loan counts
     const pendingLoans = await Loan.countDocuments({ status: 'รออนุมัติ' });
+    const pendingAdmins = await User.countDocuments({ role: 'Admin', status: 'รออนุมัติ' });
     const activeLoans = await Loan.countDocuments({ status: 'กำลังยืม' });
     const returnedLoans = await Loan.countDocuments({ status: 'คืนแล้ว' });
 
@@ -523,6 +627,7 @@ app.get('/api/stats', async (req, res) => {
       damagedEquipment: (damagedEq[0]?.total || 0) + (lostEq[0]?.total || 0),
       lostEquipment: lostEq[0]?.total || 0,
       pendingLoans,
+      pendingAdmins,
       activeLoans,
       overdueLoans,
       returnedLoans,
